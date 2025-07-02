@@ -1,0 +1,53 @@
+let
+    // Configuración
+    apiKey   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpaGNjY3Zyd3NpZW1zaWRkYXZzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDcwMDQ5NiwiZXhwIjoyMDY2Mjc2NDk2fQ.krFz_vYCVdABBmDgXw_kXc886w-KbVOemisdoHGI2zw",
+    host     = "https://wihcccvrwsiemsiddavs.supabase.co",
+    relativePath = "rest/v1/pedidos",  // ← vista en minúsculas
+    pageSize = 1000,
+
+    headers = [
+        #"apikey"        = apiKey,
+        #"Authorization" = "Bearer " & apiKey,
+        #"Accept"        = "application/json"
+    ],
+
+    // Función que obtiene una página
+    GetPage = (offset as number) as list =>
+        let
+            raw = Web.Contents(
+                host,
+                [
+                    RelativePath = relativePath,
+                    Query = [
+                        select = "*",
+                        limit  = Text.From(pageSize),
+                        offset = Text.From(offset)
+                    ],
+                    Headers = headers,
+                    ManualStatusHandling = {416}
+                ]),
+            parsed =
+                if Value.Metadata(raw)[Response.Status] = 416
+                then {}
+                else Json.Document(raw)
+        in
+            parsed,
+
+    // Iterar todas las páginas
+    Pages = List.Generate(
+        () => [offset = 0, page = GetPage(0)],
+        each not List.IsEmpty([page]),
+        each [
+            offset = [offset] + pageSize,
+            page = GetPage([offset] + pageSize)
+        ],
+        each [page]
+    ),
+
+    // Combinar todo
+    allTables = List.Transform(Pages, each Table.FromRecords(_)),
+    allData = if List.Count(allTables) > 0
+              then Table.Combine(allTables)
+              else #table({}, {})
+in
+    allData
